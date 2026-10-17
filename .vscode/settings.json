@@ -1,18 +1,8 @@
 {
-  // Live Server reloads the page on every file change in the workspace. The
-  // pipeline rewrites logs, dbt build output and data files constantly, so
-  // serve only the dashboard and ignore everything else.
+  // This folder syncs to iCloud Drive, which keeps touching file metadata.
+  // Live Server treats every touch as an edit and reloads the page, so it
+  // reloads forever. Serve only the dashboard and never auto-reload; refresh
+  // the browser yourself after editing. `make serve` is the alternative.
   "liveServer.settings.root": "/dashboard",
-  "liveServer.settings.ignoreFiles": [
-    "data/**",
-    "dbt/**",
-    "reports/**",
-    "ingestion/**",
-    "scripts/**",
-    "docs/**",
-    ".github/**",
-    "**/*.duckdb",
-    "**/*.wal",
-    "**/*.log"
-  ]
+  "liveServer.settings.ignoreFiles": ["**"]
 }
