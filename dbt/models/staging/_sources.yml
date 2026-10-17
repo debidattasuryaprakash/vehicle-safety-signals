@@ -1,0 +1,20 @@
+version: 2
+sources:
+  - name: raw
+    schema: raw
+    description: NHTSA flat files loaded as text by ingestion/load.py
+    config:
+      # Is the newest complaint or recall recent? NHTSA updates the files daily;
+      # `dbt source freshness` runs in the monthly refresh.
+      freshness:
+        warn_after: {count: 30, period: day}
+        error_after: {count: 60, period: day}
+    tables:
+      - name: complaints
+        description: One row per complaint x component (COMPLAINTS_RECEIVED_*.txt)
+        config:
+          loaded_at_field: "{{ 'try_to_timestamp(nullif(ldate, \\'\\'), \\'YYYYMMDD\\')' if target.type == 'snowflake' else 'try_strptime(nullif(ldate, \\'\\'), \\'%Y%m%d\\')' }}"
+      - name: recalls
+        description: One row per recall campaign x make/model/year (FLAT_RCL_POST_2010.txt)
+        config:
+          loaded_at_field: "{{ 'try_to_timestamp(nullif(rcdate, \\'\\'), \\'YYYYMMDD\\')' if target.type == 'snowflake' else 'try_strptime(nullif(rcdate, \\'\\'), \\'%Y%m%d\\')' }}"

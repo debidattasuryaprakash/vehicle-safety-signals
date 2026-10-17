@@ -1,0 +1,7 @@
+pandas>=2.0
+pyyaml>=6.0
+duckdb>=1.0
+dbt-core>=1.10,<2
+dbt-duckdb>=1.9
+dbt-snowflake>=1.9
+snowflake-connector-python[pandas]>=3.0

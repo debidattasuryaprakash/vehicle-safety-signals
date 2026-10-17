@@ -1,0 +1,35 @@
+# Column order of NHTSA's tab-delimited flat files (no header row).
+# VERIFY against the official field descriptions that NHTSA publishes next to
+# each download (CMPL.txt for complaints, RCL.txt for recalls). If NHTSA adds
+# or reorders fields, update this list; load.py checks the column count.
+#
+# Complaints come in period files with the same layout; list the ones to load.
+# 2020-2026 gives several years of history to backtest the signal method
+# without the multi-GB FLAT_CMPL.zip (every complaint since 1995). Recalls come
+# from the post-2010 file. load.py keeps rows from START_YEAR on.
+complaints:
+  files:
+    - url: https://static.nhtsa.gov/odi/ffdd/cmpl/COMPLAINTS_RECEIVED_2020-2024.zip
+      file: COMPLAINTS_RECEIVED_2020-2024.txt
+    - url: https://static.nhtsa.gov/odi/ffdd/cmpl/COMPLAINTS_RECEIVED_2025-2026.zip
+      file: COMPLAINTS_RECEIVED_2025-2026.txt
+  columns: [CMPLID, ODINO, MFR_NAME, MAKETXT, MODELTXT, YEARTXT, CRASH, FAILDATE,
+    FIRE, INJURED, DEATHS, COMPDESC, CITY, STATE, VIN, DATEA, LDATE, MILES,
+    OCCURENCES, CDESCR, CMPL_TYPE, POLICE_RPT_YN, PURCH_DT, ORIG_OWNER_YN,
+    ANTI_BRAKES_YN, CRUISE_CONT_YN, NUM_CYLS, DRIVE_TRAIN, FUEL_SYS, FUEL_TYPE,
+    TRANS_TYPE, VEH_SPEED, DOT, TIRE_SIZE, LOC_OF_TIRE, TIRE_FAIL_TYPE,
+    ORIG_EQUIP_YN, MANUF_DT, SEAT_TYPE, RESTRAINT_TYPE, DEALER_NAME, DEALER_TEL,
+    DEALER_CITY, DEALER_STATE, DEALER_ZIP, PROD_TYPE, REPAIRED_YN, MEDICAL_ATTN,
+    VEHICLES_TOWED_YN, STATE_OF_INCIDENT, VEHICLE_OPERATOR]
+  drop_columns: [VEHICLE_OPERATOR]   # a person's name; never loaded
+  date_column: LDATE      # date NHTSA received the complaint (YYYYMMDD)
+recalls:
+  files:
+    - url: https://static.nhtsa.gov/odi/ffdd/rcl/FLAT_RCL_POST_2010.zip
+      file: FLAT_RCL_POST_2010.txt
+  columns: [RECORD_ID, CAMPNO, MAKETXT, MODELTXT, YEARTXT, MFGCAMPNO, COMPNAME,
+    MFGNAME, BGMAN, ENDMAN, RCLTYPECD, POTAFF, ODATE, INFLUENCED_BY, MFGTXT,
+    RCDATE, DATEA, RPNO, FMVSS, DESC_DEFECT, CONEQUENCE_DEFECT,
+    CORRECTIVE_ACTION, NOTES, RCL_CMPT_ID, MFR_COMP_NAME, MFR_COMP_DESC,
+    MFR_COMP_PTNO, DO_NOT_DRIVE, PARK_OUTSIDE]
+  date_column: RCDATE     # date the manufacturer's defect report was received

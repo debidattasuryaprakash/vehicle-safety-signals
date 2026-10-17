@@ -1,0 +1,22 @@
+# Credentials come from environment variables; nothing secret is committed.
+vehicle_signals:
+  target: dev
+  outputs:
+    dev:            # local: DuckDB file built by ingestion/load.py
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', '../data/warehouse.duckdb') }}"
+      threads: 4
+    ci:             # GitHub Actions: same engine, synthetic sample data
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', '../data/warehouse.duckdb') }}"
+      threads: 4
+    prod:           # Snowflake
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', '') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', '') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD', '') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', '') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', '') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', '') }}"
+      schema: analytics
+      threads: 4

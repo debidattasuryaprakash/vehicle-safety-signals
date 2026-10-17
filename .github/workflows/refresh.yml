@@ -1,0 +1,55 @@
+name: Refresh from NHTSA (Snowflake)
+
+# Monthly, or on demand from the Actions tab. Needs repository secrets:
+# SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD, SNOWFLAKE_ROLE,
+# SNOWFLAKE_WAREHOUSE, SNOWFLAKE_DATABASE
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 2 * *"
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TARGET: snowflake
+      DATA_LABEL: NHTSA
+      START_YEAR: "2020"
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: cd ingestion && python download.py && python load.py
+      # fails the run if NHTSA's newest complaint or recall is over 60 days old
+      - run: cd dbt && dbt source freshness --profiles-dir . --target prod
+      - run: cd dbt && dbt build --profiles-dir . --target prod
+      - run: python scripts/export_dashboard.py
+      - name: Commit refreshed dashboard data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dashboard/data/dashboard.json
+          git diff --cached --quiet || git commit -m "Refresh dashboard data from NHTSA"
+          git push
+
+  # A push made with GITHUB_TOKEN doesn't trigger ci.yml, but a
+  # workflow_dispatch does, so start CI to test and republish.
+  republish:
+    needs: refresh
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
+        env:
+          GH_TOKEN: ${{ github.token }}

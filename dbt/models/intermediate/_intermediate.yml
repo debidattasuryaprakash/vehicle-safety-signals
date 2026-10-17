@@ -1,0 +1,185 @@
+version: 2
+models:
+  - name: int_model_component_month_counts
+    description: Complete months of complaint counts per make x model x component group, zero-filled.
+    columns:
+      - name: data_through
+        description: Latest complaint received date in the data.
+
+unit_tests:
+  # The signal rules on small hand-made inputs. Each pair has seven quiet
+  # months (baseline 5) and then an eighth month to test. Recalls only count
+  # when they name the same make, model and component group. The vars pin the
+  # default thresholds so the expectations don't move if dbt_project.yml is tuned.
+  - name: spike_then_recall_is_a_hit
+    description: 20 complaints against a baseline of 5 is a signal; a recall filed after the month ends is a hit, timed from the first day of the next month.
+    model: mart_model_component_monthly
+    overrides:
+      vars: &signal_vars
+        signal_ratio: 2.0
+        signal_min_complaints: 10
+        signal_min_history_months: 6
+        signal_min_z: 3.0
+        signal_exclude_components: ["UNKNOWN OR OTHER"]
+        signal_recall_lookback_days: 90
+        signal_followup_days: 365
+    given:
+      - input: ref('int_model_component_month_counts')
+        rows:
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-01-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-02-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-03-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-04-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-05-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-06-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-07-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-08-01, complaints: 20, data_through: 2025-01-01}
+      - input: ref('fct_recalls')
+        rows:
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, report_received_date: 2023-10-15}
+    expect:
+      rows:
+        - {month: 2023-01-01, is_signal: false, days_to_recall: 256}
+        - {month: 2023-02-01, is_signal: false, days_to_recall: 228}
+        - {month: 2023-03-01, is_signal: false, days_to_recall: 197}
+        - {month: 2023-04-01, is_signal: false, days_to_recall: 167}
+        - {month: 2023-05-01, is_signal: false, days_to_recall: 136}
+        - {month: 2023-06-01, is_signal: false, days_to_recall: 106}
+        - {month: 2023-07-01, is_signal: false, days_to_recall: 75}
+        - {month: 2023-08-01, is_signal: true, days_to_recall: 44}
+
+  - name: recall_on_another_model_is_not_a_hit
+    description: The same spike; a recall on a different model of the same make and component doesn't count.
+    model: mart_model_component_monthly
+    overrides:
+      vars: *signal_vars
+    given:
+      - input: ref('int_model_component_month_counts')
+        rows:
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-01-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-02-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-03-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-04-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-05-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-06-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-07-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-08-01, complaints: 20, data_through: 2025-01-01}
+      - input: ref('fct_recalls')
+        rows:
+          - {make: ACME, model: PICKUP, component_group: BRAKES, report_received_date: 2023-10-15}
+    expect:
+      rows:
+        - {month: 2023-01-01, is_signal: false, next_recall_date: null}
+        - {month: 2023-02-01, is_signal: false, next_recall_date: null}
+        - {month: 2023-03-01, is_signal: false, next_recall_date: null}
+        - {month: 2023-04-01, is_signal: false, next_recall_date: null}
+        - {month: 2023-05-01, is_signal: false, next_recall_date: null}
+        - {month: 2023-06-01, is_signal: false, next_recall_date: null}
+        - {month: 2023-07-01, is_signal: false, next_recall_date: null}
+        - {month: 2023-08-01, is_signal: true, next_recall_date: null}
+
+  - name: spike_after_a_recall_is_not_a_signal
+    description: The same spike, but a recall was filed during the month, so owners are reacting to it.
+    model: mart_model_component_monthly
+    overrides:
+      vars: *signal_vars
+    given:
+      - input: ref('int_model_component_month_counts')
+        rows:
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-01-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-02-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-03-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-04-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-05-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-06-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-07-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, month: 2023-08-01, complaints: 20, data_through: 2025-01-01}
+      - input: ref('fct_recalls')
+        rows:
+          - {make: ACME, model: ROADSTER, component_group: BRAKES, report_received_date: 2023-08-10}
+    expect:
+      rows:
+        - {month: 2023-01-01, is_spike: false, is_signal: false}
+        - {month: 2023-02-01, is_spike: false, is_signal: false}
+        - {month: 2023-03-01, is_spike: false, is_signal: false}
+        - {month: 2023-04-01, is_spike: false, is_signal: false}
+        - {month: 2023-05-01, is_spike: false, is_signal: false}
+        - {month: 2023-06-01, is_spike: false, is_signal: false}
+        - {month: 2023-07-01, is_spike: false, is_signal: false}
+        - {month: 2023-08-01, is_spike: true, is_signal: false}
+
+  - name: z_score_threshold_holds_back_small_jumps
+    description: 10 against a baseline of 5 doubles, but z = 2.2 is under 3, so it is not a signal; 12 (z = 3.1) is.
+    model: mart_model_component_monthly
+    overrides:
+      vars: *signal_vars
+    given:
+      - input: ref('int_model_component_month_counts')
+        rows:
+          - {make: ACME, model: ROADSTER, component_group: STEERING, month: 2023-01-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: STEERING, month: 2023-02-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: STEERING, month: 2023-03-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: STEERING, month: 2023-04-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: STEERING, month: 2023-05-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: STEERING, month: 2023-06-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: STEERING, month: 2023-07-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: STEERING, month: 2023-08-01, complaints: 10, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: AIR BAGS, month: 2023-01-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: AIR BAGS, month: 2023-02-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: AIR BAGS, month: 2023-03-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: AIR BAGS, month: 2023-04-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: AIR BAGS, month: 2023-05-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: AIR BAGS, month: 2023-06-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: AIR BAGS, month: 2023-07-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: AIR BAGS, month: 2023-08-01, complaints: 12, data_through: 2025-01-01}
+      - input: ref('fct_recalls')
+        rows:
+          - {make: OTHER, model: VAN, component_group: BRAKES, report_received_date: 2023-08-10}
+    expect:
+      rows:
+        - {component_group: STEERING, month: 2023-01-01, is_signal: false}
+        - {component_group: STEERING, month: 2023-02-01, is_signal: false}
+        - {component_group: STEERING, month: 2023-03-01, is_signal: false}
+        - {component_group: STEERING, month: 2023-04-01, is_signal: false}
+        - {component_group: STEERING, month: 2023-05-01, is_signal: false}
+        - {component_group: STEERING, month: 2023-06-01, is_signal: false}
+        - {component_group: STEERING, month: 2023-07-01, is_signal: false}
+        - {component_group: STEERING, month: 2023-08-01, is_signal: false}
+        - {component_group: AIR BAGS, month: 2023-01-01, is_signal: false}
+        - {component_group: AIR BAGS, month: 2023-02-01, is_signal: false}
+        - {component_group: AIR BAGS, month: 2023-03-01, is_signal: false}
+        - {component_group: AIR BAGS, month: 2023-04-01, is_signal: false}
+        - {component_group: AIR BAGS, month: 2023-05-01, is_signal: false}
+        - {component_group: AIR BAGS, month: 2023-06-01, is_signal: false}
+        - {component_group: AIR BAGS, month: 2023-07-01, is_signal: false}
+        - {component_group: AIR BAGS, month: 2023-08-01, is_signal: true}
+
+  - name: catch_all_component_is_never_flagged
+    description: The same spike under "UNKNOWN OR OTHER" is not a signal.
+    model: mart_model_component_monthly
+    overrides:
+      vars: *signal_vars
+    given:
+      - input: ref('int_model_component_month_counts')
+        rows:
+          - {make: ACME, model: ROADSTER, component_group: UNKNOWN OR OTHER, month: 2023-01-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: UNKNOWN OR OTHER, month: 2023-02-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: UNKNOWN OR OTHER, month: 2023-03-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: UNKNOWN OR OTHER, month: 2023-04-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: UNKNOWN OR OTHER, month: 2023-05-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: UNKNOWN OR OTHER, month: 2023-06-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: UNKNOWN OR OTHER, month: 2023-07-01, complaints: 5, data_through: 2025-01-01}
+          - {make: ACME, model: ROADSTER, component_group: UNKNOWN OR OTHER, month: 2023-08-01, complaints: 20, data_through: 2025-01-01}
+      - input: ref('fct_recalls')
+        rows:
+          - {make: OTHER, model: VAN, component_group: BRAKES, report_received_date: 2023-08-10}
+    expect:
+      rows:
+        - {month: 2023-01-01, is_signal: false}
+        - {month: 2023-02-01, is_signal: false}
+        - {month: 2023-03-01, is_signal: false}
+        - {month: 2023-04-01, is_signal: false}
+        - {month: 2023-05-01, is_signal: false}
+        - {month: 2023-06-01, is_signal: false}
+        - {month: 2023-07-01, is_signal: false}
+        - {month: 2023-08-01, is_signal: false}

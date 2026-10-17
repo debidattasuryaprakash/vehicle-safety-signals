@@ -1,0 +1,71 @@
+version: 2
+models:
+  - name: dim_vehicle
+    columns:
+      - name: vehicle_key
+        data_tests: [unique, not_null]
+  - name: dim_component
+    columns:
+      - name: component_group
+        data_tests: [unique, not_null]
+  - name: fct_complaints
+    description: One row per complaint x vehicle x component group.
+    columns:
+      - name: complaint_component_key
+        data_tests: [unique, not_null]
+      - name: vehicle_key
+        data_tests:
+          - not_null
+          - relationships: {arguments: {to: ref('dim_vehicle'), field: vehicle_key}}
+      - name: component_group
+        data_tests:
+          - relationships: {arguments: {to: ref('dim_component'), field: component_group}}
+      - name: received_month
+        data_tests: [not_null]
+  - name: fct_recalls
+    columns:
+      - name: recall_key
+        data_tests: [unique, not_null]
+      - name: vehicle_key
+        data_tests:
+          - relationships: {arguments: {to: ref('dim_vehicle'), field: vehicle_key}}
+  - name: mart_model_component_monthly
+    description: >
+      Every make x model x component month with its trailing 12-month baseline, the spike
+      test, the signal flag and the recall outcome. The input to the dashboard and
+      the backtest.
+    columns:
+      - name: model_component_month_key
+        data_tests: [unique, not_null]
+      - name: next_month_start
+        description: First day of the following month, when the month's data is complete and a signal would be known.
+      - name: is_eligible
+        description: Enough history and volume to test, not the catch-all component, and no recent recall. The backtest's base population.
+      - name: is_spike
+        description: Complaints passed the ratio, volume and z-score thresholds.
+      - name: is_signal
+        description: A spike with no recall on the same make, model and component in the lookback window before it.
+        data_tests:
+          - accepted_values: {arguments: {values: [true, false], quote: false}}
+      - name: prior_recall_date
+        description: Latest recall on the same make, model and component in the lookback window before next_month_start.
+      - name: next_recall_date
+        description: First recall on the same make, model and component filed on or after next_month_start and within the follow-up window.
+      - name: days_to_recall
+        description: Days from next_month_start to next_recall_date.
+      - name: followup_complete
+        description: True when the data runs past the full follow-up window, so "no recall" is a real outcome.
+  - name: mart_signals
+    description: Months flagged as signals, with the first recall that followed (if any).
+    columns:
+      - name: model_component_month_key
+        data_tests: [unique, not_null]
+  - name: mart_signal_backtest
+    description: >
+      Hit rate, lift over the base rate and median lead time of the signal rule
+      for a grid of thresholds, on months with a full follow-up window.
+    columns:
+      - name: is_current
+        description: The thresholds currently set in dbt_project.yml.
+  - name: mart_complaint_to_recall
+    description: Complaints before each recall and days from first complaint to recall.

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vehicle Safety Signal Monitor</title>
+  <meta name="description" content="Early-warning signals from NHTSA vehicle complaints, and the recalls that followed.">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+</head>
+<body>
+  <div class="page viz-root">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">NHTSA complaints &amp; recalls</p>
+        <h1>Vehicle Safety Signal Monitor</h1>
+        <p class="lede" id="lede">Which vehicle models and components are drawing unusually many complaints, and did a recall follow?</p>
+      </div>
+      <div class="meta">
+        <span class="badge" id="data-badge">Loading…</span>
+        <span id="data-range"></span>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg></button>
+      </div>
+    </header>
+
+    <div class="notice" id="sample-notice" hidden>
+      <strong>Sample data.</strong> These numbers come from a synthetic file shaped like NHTSA's.
+      Run the pipeline on the real files (see README) before quoting any finding.
+    </div>
+
+    <section class="filters" aria-label="Filters">
+      <label>Make
+        <select id="make-filter"><option value="ALL">All makes</option></select>
+      </label>
+      <p class="hint" id="filter-hint"></p>
+    </section>
+
+    <section class="tiles" id="tiles" aria-label="Summary"></section>
+
+    <section class="grid">
+      <article class="card wide">
+        <header class="card-head">
+          <h2 id="trend-title">Monthly complaints</h2>
+          <p class="sub">Complaint records per month; hover for the month's signals. <span class="key" id="trend-key" hidden><i class="dot signal"></i> month with at least one signal</span></p>
+        </header>
+        <div class="chart" id="trend-chart" role="img" aria-label="Line chart of monthly complaints"></div>
+        <details class="table-view"><summary>View as table</summary><div id="trend-table"></div></details>
+      </article>
+
+      <article class="card">
+        <header class="card-head">
+          <h2>Top components, last 12 months</h2>
+          <p class="sub">Complaint records by component group</p>
+        </header>
+        <div class="chart" id="component-chart" role="img" aria-label="Bar chart of complaints by component group"></div>
+      </article>
+
+      <article class="card">
+        <header class="card-head">
+          <h2 id="detail-title">Signal detail</h2>
+          <p class="sub"><span class="key"><i class="line series"></i> complaints</span>
+            <span class="key"><i class="line baseline"></i> trailing 12-month average</span>
+            <span class="key"><i class="dot signal"></i> signal</span></p>
+        </header>
+        <div class="chart" id="detail-chart" role="img" aria-label="Line chart of complaints against baseline for the selected signal"></div>
+      </article>
+
+      <article class="card wide">
+        <header class="card-head">
+          <h2>Does the signal rule work?</h2>
+          <p class="sub">Backtest, all makes, on months with a full year of follow-up: the share of flagged months followed by a recall on the same make, model and component within 365 days, by z-score threshold.
+            <span class="key"><i class="line s1"></i> ≥ 1.5× baseline</span>
+            <span class="key"><i class="line s2"></i> ≥ 2×</span>
+            <span class="key"><i class="line s3"></i> ≥ 3×</span>
+            <span class="key"><i class="line baseline"></i> every eligible month (base rate)</span></p>
+        </header>
+        <p class="callout" id="backtest-callout"></p>
+        <div class="chart" id="backtest-chart" role="img" aria-label="Line chart of recall hit rate by z-score threshold for three ratio thresholds, against the base rate"></div>
+        <details class="table-view"><summary>View as table</summary><div class="table-wrap" id="backtest-table"></div></details>
+      </article>
+
+      <article class="card wide">
+        <header class="card-head">
+          <h2>Signals</h2>
+          <p class="sub">Months where complaints reached at least 2× their 12-month baseline, with at least 10 complaints and a Poisson z-score of 3 or more. Counted per make, model and component. Spikes within 90 days after a recall on the same model and component are left out, since owners are reacting to the recall. Select a row to see its history.</p>
+        </header>
+        <div class="table-wrap"><table class="data" id="signals-table"></table></div>
+        <button class="more" id="signals-more" type="button" hidden></button>
+      </article>
+
+      <article class="card wide">
+        <header class="card-head">
+          <h2>Recalls and the complaints before them</h2>
+          <p class="sub">Complaints for the same make, model and component in the 180 days before each recall report</p>
+        </header>
+        <div class="table-wrap"><table class="data" id="recalls-table"></table></div>
+      </article>
+    </section>
+
+    <footer class="foot">
+      <p><strong>Method.</strong> Python loads NHTSA's flat files into Snowflake (or DuckDB locally); dbt models clean them, build a star schema and compute a
+        trailing 12-month baseline per make, model and component. Vehicles only (no tires, child seats or equipment); the catch-all “Unknown or other” component is never flagged. Thresholds live in <code>dbt_project.yml</code>. A signal is a prompt to investigate, not proof of a defect.
+        <a href="lineage/">Model lineage and column docs (dbt)</a>.</p>
+      <p id="generated"></p>
+    </footer>
+  </div>
+  <div class="tooltip" id="tooltip" role="status" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

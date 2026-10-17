@@ -1,0 +1,6 @@
+# CI runs on DuckDB with synthetic data, so it skips the Snowflake packages.
+pandas>=2.0
+pyyaml>=6.0
+duckdb>=1.0
+dbt-core>=1.10,<2
+dbt-duckdb>=1.9

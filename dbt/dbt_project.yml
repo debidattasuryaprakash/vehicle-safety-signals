@@ -1,0 +1,43 @@
+name: vehicle_signals
+version: "1.0.0"
+config-version: 2
+profile: vehicle_signals
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # A make x component month is flagged when its complaints reach this
+  # multiple of the trailing 12-month average, with enough volume and history.
+  signal_ratio: 2.0
+  signal_min_complaints: 10
+  signal_min_history_months: 6
+  signal_min_z: 3.0
+  # catch-all groups that say nothing about a specific defect
+  signal_exclude_components: ["UNKNOWN OR OTHER"]
+  # a spike within this many days after a recall on the same make and
+  # component is owners reacting to the recall, not an early warning
+  signal_recall_lookback_days: 90
+  # a signal counts as followed by a recall if one is filed within this
+  # many days after the signal month ends
+  signal_followup_days: 365
+  # threshold grid that mart_signal_backtest evaluates
+  backtest_min_z: [2, 3, 4, 5, 6, 8]
+  backtest_ratio: [1.5, 2, 3]
+  # fct_complaints rebuilds only the most recent days on an incremental run
+  incremental_lookback_days: 120
+
+models:
+  vehicle_signals:
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts

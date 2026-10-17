@@ -1,0 +1,18 @@
+{
+  // Live Server reloads the page on every file change in the workspace. The
+  // pipeline rewrites logs, dbt build output and data files constantly, so
+  // serve only the dashboard and ignore everything else.
+  "liveServer.settings.root": "/dashboard",
+  "liveServer.settings.ignoreFiles": [
+    "data/**",
+    "dbt/**",
+    "reports/**",
+    "ingestion/**",
+    "scripts/**",
+    "docs/**",
+    ".github/**",
+    "**/*.duckdb",
+    "**/*.wal",
+    "**/*.log"
+  ]
+}

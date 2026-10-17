@@ -1,0 +1,28 @@
+version: 2
+models:
+  - name: stg_complaints
+    description: Complaints typed and standardised (trimmed, upper-cased, dates parsed, 9999 years nulled).
+    columns:
+      - name: complaint_row_id
+        data_tests: [unique, not_null]
+      - name: odi_number
+        description: NHTSA's complaint number; repeats when a complaint lists several components.
+        data_tests: [not_null]
+      - name: make
+        data_tests: [not_null]
+      - name: component_group
+        description: Top-level component group, e.g. "AIR BAGS" from "AIR BAGS:FRONTAL".
+        data_tests: [not_null]
+      - name: received_date
+        data_tests:
+          - not_null:
+              config: {severity: warn}
+  - name: stg_recalls
+    description: Recalls typed and standardised.
+    columns:
+      - name: recall_row_id
+        data_tests: [unique, not_null]
+      - name: campaign_number
+        data_tests: [not_null]
+      - name: report_received_date
+        data_tests: [not_null]
