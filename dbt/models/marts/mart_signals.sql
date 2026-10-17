@@ -12,6 +12,10 @@ select
     z_score,
     next_recall_date,
     days_to_recall,
+    next_recall_campaign,
+    next_investigation_date,
+    next_investigation_number,
+    days_to_investigation,
     followup_complete
 from {{ ref('mart_model_component_monthly') }}
 where is_signal

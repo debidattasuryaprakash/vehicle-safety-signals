@@ -3,7 +3,7 @@
    every chart with D3. Colours come from CSS custom properties, so light and
    dark mode need no redraw. */
 
-const state = { data: null, make: "ALL", selected: null, allSignals: false };
+const state = { data: null, make: "ALL", selected: null, allSignals: false, outcome: "recall", recall: null };
 const SIGNAL_ROWS = 25;
 const fmt = d3.format(",");
 const fmt1 = d3.format(",.1f");
@@ -22,6 +22,15 @@ const makeCase = (s) => (ACRONYMS.has(s) ? s : titleCase(s));
 const modelCase = (s) => (s || "").split(" ").map((w) => (w.length <= 2 || /[\d-]/.test(w) ? w : titleCase(w))).join(" ");
 const keyOf = (s) => `${s.make}|${s.model}|${s.component_group}|${s.month}`;
 const vehicle = (s) => `${makeCase(s.make)} ${modelCase(s.model)}`;
+// complaint narratives and names are free text from the public: escape before inserting
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const recallUrl = (id) => `https://www.nhtsa.gov/recalls?nhtsaId=${encodeURIComponent(id)}`;
+const investigationUrl = (id) => `https://www.nhtsa.gov/?nhtsaId=${encodeURIComponent(id)}`;
+const outLink = (url, text) => `<a class="out" href="${url}" target="_blank" rel="noopener">${esc(text)}</a>`;
+const OUTCOMES = {
+  recall: { short: "a recall", long: "a recall on the same make, model and component" },
+  recall_or_investigation: { short: "a recall or NHTSA investigation", long: "a recall or an NHTSA investigation on the same make, model and component" },
+};
 const byMake = (rows) => (state.make === "ALL" ? rows : rows.filter((r) => r.make === state.make));
 
 /* ---------- tooltip ---------- */
@@ -146,7 +155,7 @@ function renderTrend() {
   const points = months.map((p) => ({ ...p, y: y(p.complaints) }));
   crosshair(g, x, w, h, points, (p) => {
     const sigs = sigByMonth.get(p.month) || [];
-    const list = sigs.slice().sort((a, b) => b.z_score - a.z_score).slice(0, 4).map((s) => `<div class="t-row">▲ ${vehicle(s)} · ${titleCase(s.component_group)}</div>`).join("");
+    const list = sigs.slice().sort((a, b) => b.z_score - a.z_score).slice(0, 4).map((s) => `<div class="t-row">▲ ${esc(vehicle(s))} · ${esc(titleCase(s.component_group))}</div>`).join("");
     const more = sigs.length > 4 ? `<div class="t-row">+${sigs.length - 4} more</div>` : "";
     const head = sigs.length ? `<div class="t-row">${fmt(sigs.length)} signals, strongest:</div>` : "";
     return `<div class="t-title">${monthLabel(p.date)}</div><div>${fmt(p.complaints)} complaint records</div>${head}${list}${more}`;
@@ -197,7 +206,7 @@ function renderComponents() {
   rowsG.append("text").attr("x", (d) => x(d.value) + 6).attr("y", y.bandwidth() / 2).attr("dy", "0.35em")
     .style("fill", "var(--text-secondary)").text((d) => fmt(d.value));
   rowsG.append("rect").attr("x", -m.left).attr("width", width).attr("height", y.bandwidth()).style("fill", "transparent")
-    .on("pointermove", (event, d) => showTip(event, `<div class="t-title">${titleCase(d.name)}</div><div>${fmt(d.value)} complaint records, last 12 months</div>`))
+    .on("pointermove", (event, d) => showTip(event, `<div class="t-title">${esc(titleCase(d.name))}</div><div>${fmt(d.value)} complaint records, last 12 months</div>`))
     .on("pointerleave", hideTip);
 }
 
@@ -206,8 +215,9 @@ function renderDetail() {
   const el = document.getElementById("detail-chart");
   const s = state.selected;
   const title = document.getElementById("detail-title");
-  if (!s) { title.textContent = "Signal detail"; el.innerHTML = '<p class="empty">No signals for this selection.</p>'; return; }
+  if (!s) { title.textContent = "Signal detail"; el.innerHTML = '<p class="empty">No signals for this selection.</p>'; renderFacts(); return; }
   title.textContent = `${vehicle(s)} · ${titleCase(s.component_group)}`;
+  renderFacts();
   const ser = state.data.series.find((r) => r.make === s.make && r.model === s.model && r.component_group === s.component_group);
   const start = parse(ser.start);
   const pts = ser.complaints.map((complaints, i) => ({
@@ -247,8 +257,13 @@ function renderDetail() {
 /* ---------- backtest ---------- */
 function renderBacktest() {
   const el = document.getElementById("backtest-chart");
-  const rows = state.data.backtest || [];
+  const all = (state.data.backtest || []).filter((r) => r.outcome === state.outcome);
+  const rows = all.filter((r) => r.slice === "all");
+  const label = OUTCOMES[state.outcome];
+  document.getElementById("outcome-text").textContent = label.long;
+  document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.outcome === state.outcome)));
   const callout = document.getElementById("backtest-callout");
+  renderOutOfSample(all);
   if (!rows.length || !rows[0].eligible_months) {
     el.innerHTML = '<p class="empty">No months with a full year of follow-up yet.</p>';
     callout.textContent = "";
@@ -258,9 +273,9 @@ function renderBacktest() {
   const cur = rows.find((r) => r.is_current);
   if (cur && cur.signals) {
     callout.innerHTML = `At the current setting (z ≥ ${cur.min_z}, ≥ ${cur.ratio}× baseline), <strong>${pct(cur.hit_rate)}</strong> of
-      ${fmt(cur.signals)} signals were followed by a recall, against <strong>${pct(base)}</strong> of all
+      ${fmt(cur.signals)} signals were followed by ${label.short}, against <strong>${pct(base)}</strong> of all
       ${fmt(cur.eligible_months)} eligible months: <strong>${fmt2(cur.lift)}× the base rate</strong>, with a median
-      ${Math.round(cur.median_days_to_recall)} days of warning.`;
+      ${Math.round(cur.median_days_to_outcome)} days from the end of the signal month.`;
   }
 
   const ratios = [...new Set(rows.map((r) => r.ratio))].sort(d3.ascending);
@@ -318,23 +333,42 @@ function renderBacktest() {
   }
 
   // hover: nearest point anywhere in the plot
-  const all = lines.flatMap((l) => l.pts.map((p) => ({ ...p, px: x(p.min_z), py: y(p.hit_rate) })));
+  const pts = lines.flatMap((l) => l.pts.map((p) => ({ ...p, px: x(p.min_z), py: y(p.hit_rate) })));
   const focus = g.append("circle").attr("r", 6).style("fill", "none").style("stroke", "var(--text-primary)").style("stroke-width", 2).style("display", "none");
   g.append("rect").attr("width", w).attr("height", h).style("fill", "transparent")
     .on("pointermove", (event) => {
       const [mx, my] = d3.pointer(event);
-      const p = d3.least(all, (q) => (q.px - mx) ** 2 + (q.py - my) ** 2);
+      const p = d3.least(pts, (q) => (q.px - mx) ** 2 + (q.py - my) ** 2);
       if (!p) return;
       focus.attr("cx", p.px).attr("cy", p.py).style("display", null);
       showTip(event, `<div class="t-title">z ≥ ${p.min_z}, ≥ ${p.ratio}× baseline${p.is_current ? " · current" : ""}</div>
-        <div>${pct(p.hit_rate)} followed by a recall (${fmt(p.hits)} of ${fmt(p.signals)})</div>
-        <div class="t-row">${fmt2(p.lift)}× the base rate · median ${p.median_days_to_recall != null ? Math.round(p.median_days_to_recall) : "–"} days of warning</div>`);
+        <div>${pct(p.hit_rate)} followed by ${label.short} (${fmt(p.hits)} of ${fmt(p.signals)})</div>
+        <div class="t-row">${fmt2(p.lift)}× the base rate · median ${p.median_days_to_outcome != null ? Math.round(p.median_days_to_outcome) : "–"} days</div>`);
     })
     .on("pointerleave", () => { focus.style("display", "none"); hideTip(); });
 
-  document.getElementById("backtest-table").innerHTML = `<table class="data"><thead><tr><th class="num">z-score ≥</th><th class="num">× baseline ≥</th><th class="num">Signals</th><th class="num">Followed by a recall</th><th class="num">Lift</th><th class="num">Median days of warning</th></tr></thead><tbody>${
-    rows.map((r) => `<tr class="${r.is_current ? "selected" : ""}"><td class="num">${r.min_z}</td><td class="num">${r.ratio}×</td><td class="num">${fmt(r.signals)}</td><td class="num">${r.signals ? pct(r.hit_rate) : "–"}</td><td class="num">${r.lift != null ? `${fmt2(r.lift)}×` : "–"}</td><td class="num">${r.median_days_to_recall != null ? Math.round(r.median_days_to_recall) : "–"}</td></tr>`).join("")
-  }<tr><td colspan="2">Every eligible month</td><td class="num">${fmt(rows[0].eligible_months)}</td><td class="num">${pct(base)}</td><td class="num">1.0×</td><td></td></tr></tbody></table>`;
+  const liftIn = (r, slice) => {
+    const m = all.find((q) => q.slice === slice && q.min_z === r.min_z && q.ratio === r.ratio);
+    return m && m.lift != null ? `${fmt2(m.lift)}×` : "–";
+  };
+  document.getElementById("backtest-table").innerHTML = `<table class="data"><thead><tr><th class="num">z-score ≥</th><th class="num">× baseline ≥</th><th class="num">Signals</th><th class="num">Followed</th><th class="num">Lift</th><th class="num">Lift 2020–22</th><th class="num">Lift 2023–25</th><th class="num">Median days</th></tr></thead><tbody>${
+    rows.map((r) => `<tr class="${r.is_current ? "selected" : ""}"><td class="num">${r.min_z}</td><td class="num">${r.ratio}×</td><td class="num">${fmt(r.signals)}</td><td class="num">${r.signals ? pct(r.hit_rate) : "–"}</td><td class="num">${r.lift != null ? `${fmt2(r.lift)}×` : "–"}</td><td class="num">${liftIn(r, "2020-2022")}</td><td class="num">${liftIn(r, "2023-2025")}</td><td class="num">${r.median_days_to_outcome != null ? Math.round(r.median_days_to_outcome) : "–"}</td></tr>`).join("")
+  }<tr><td colspan="2">Every eligible month</td><td class="num">${fmt(rows[0].eligible_months)}</td><td class="num">${pct(base)}</td><td class="num">1.00×</td><td></td><td></td><td></td></tr></tbody></table>`;
+}
+
+// Tune on the early years, test on the later ones: the honest check on the
+// thresholds, since picking the best row of a table flatters it.
+function renderOutOfSample(all) {
+  const el = document.getElementById("backtest-oos");
+  const train = all.filter((r) => r.slice === "2020-2022" && r.signals >= 30 && r.lift != null);
+  const best = d3.greatest(train, (r) => r.lift);
+  const test = best && all.find((r) => r.slice === "2023-2025" && r.min_z === best.min_z && r.ratio === best.ratio);
+  if (!best || !test || test.lift == null) { el.textContent = ""; return; }
+  const cur = (slice) => all.find((r) => r.slice === slice && r.is_current);
+  const c1 = cur("2020-2022"), c2 = cur("2023-2025");
+  el.innerHTML = `<strong>Out-of-sample check.</strong> The thresholds that scored best on 2020–22 signals
+    (z ≥ ${best.min_z}, ≥ ${best.ratio}×: ${fmt2(best.lift)}×) scored <strong>${fmt2(test.lift)}×</strong> on 2023–25.
+    ${c1 && c2 && c1.lift != null && c2.lift != null ? `The default setting scored ${fmt2(c1.lift)}× and ${fmt2(c2.lift)}×.` : ""}`;
 }
 
 /* ---------- sortable tables ---------- */
@@ -351,7 +385,7 @@ function table(el, columns, rows, { onSelect, selectedKey, rowKey, limit } = {})
     el.innerHTML = `<thead><tr>${columns.map((c) =>
       `<th data-key="${c.key}" class="${c.num ? "num" : ""}" ${sort && sort.key === c.key ? `aria-sort="${sort.dir}"` : ""}>${c.label}</th>`).join("")}</tr></thead>
       <tbody>${data.map((r, i) => `<tr data-i="${i}" class="${rowKey && rowKey(r) === selectedKey ? "selected" : ""}">${columns.map((c) =>
-        `<td class="${c.num ? "num" : ""}">${c.render ? c.render(r) : r[c.key] ?? "–"}</td>`).join("")}</tr>`).join("")}</tbody>`;
+        `<td class="${c.num ? "num" : ""}">${c.render ? c.render(r) : esc(r[c.key] ?? "–")}</td>`).join("")}</tr>`).join("")}</tbody>`;
     if (!data.length) el.innerHTML += `<tbody><tr><td colspan="${columns.length}" class="empty">Nothing to show for this selection.</td></tr></tbody>`;
     el.querySelectorAll("th").forEach((th) => th.addEventListener("click", () => {
       const key = th.dataset.key;
@@ -369,21 +403,25 @@ function renderSignals() {
   const rows = byMake(state.data.signals);
   table(document.getElementById("signals-table"), [
     { key: "month", label: "Month", render: (r) => monthLabel(parse(r.month)) },
-    { key: "make", label: "Make", render: (r) => makeCase(r.make) },
-    { key: "model", label: "Model", render: (r) => modelCase(r.model) },
-    { key: "component_group", label: "Component", render: (r) => titleCase(r.component_group) },
+    { key: "make", label: "Make", render: (r) => esc(makeCase(r.make)) },
+    { key: "model", label: "Model", render: (r) => esc(modelCase(r.model)) },
+    { key: "component_group", label: "Component", render: (r) => esc(titleCase(r.component_group)) },
     { key: "complaints", label: "Complaints", num: true, render: (r) => fmt(r.complaints) },
     { key: "baseline_mean", label: "Baseline", num: true, render: (r) => fmt1(r.baseline_mean) },
     { key: "ratio_to_baseline", label: "× baseline", num: true, render: (r) => `${fmt1(r.ratio_to_baseline)}×` },
     { key: "z_score", label: "z-score", num: true, render: (r) => fmt1(r.z_score) },
     { key: "days_to_recall", label: "Recall within 365 days", sortValue: (r) => r.days_to_recall ?? (r.followup_complete ? -2 : -1),
       render: (r) => r.days_to_recall != null
-        ? `<span class="pill yes">✓ ${r.days_to_recall} days later</span>`
+        ? `<span class="pill yes">✓ ${r.days_to_recall} days later</span> ${outLink(recallUrl(r.next_recall_campaign), r.next_recall_campaign)}`
         : r.followup_complete ? '<span class="pill no">None</span>' : '<span class="pill no">None yet (window open)</span>' },
+    { key: "days_to_investigation", label: "NHTSA investigation", sortValue: (r) => r.days_to_investigation ?? 9999,
+      render: (r) => r.next_investigation_number
+        ? `${outLink(investigationUrl(r.next_investigation_number), r.next_investigation_number)} <span class="pill no">${r.days_to_investigation <= 0 ? "same month" : `${r.days_to_investigation} days later`}</span>`
+        : '<span class="pill no">–</span>' },
   ], rows, {
     limit: state.allSignals ? null : SIGNAL_ROWS,
     rowKey: keyOf, selectedKey: state.selected && keyOf(state.selected),
-    onSelect: (r) => { state.selected = r; renderDetail(); renderSignals(); },
+    onSelect: (r) => { state.selected = r; renderDetail(); renderSignals(); saveView(); },
   });
   const more = document.getElementById("signals-more");
   more.hidden = rows.length <= SIGNAL_ROWS;
@@ -392,14 +430,117 @@ function renderSignals() {
 
 function renderRecalls() {
   table(document.getElementById("recalls-table"), [
-    { key: "campaign_number", label: "Campaign" },
-    { key: "make", label: "Make", render: (r) => makeCase(r.make) },
-    { key: "model", label: "Model", render: (r) => modelCase(r.model) },
-    { key: "component_group", label: "Component", render: (r) => titleCase(r.component_group) },
+    { key: "campaign_number", label: "Campaign", render: (r) => outLink(recallUrl(r.campaign_number), r.campaign_number) },
+    { key: "make", label: "Make", render: (r) => esc(makeCase(r.make)) },
+    { key: "model", label: "Model", render: (r) => esc(modelCase(r.model)) },
+    { key: "component_group", label: "Component", render: (r) => esc(titleCase(r.component_group)) },
     { key: "report_received_date", label: "Report received", render: (r) => r.report_received_date ? dayLabel(parse(r.report_received_date)) : "–" },
     { key: "potentially_affected", label: "Vehicles affected", num: true, render: (r) => r.potentially_affected != null ? fmt(r.potentially_affected) : "–" },
     { key: "complaints_180d_before_recall", label: "Complaints, 180 days before", num: true, render: (r) => fmt(r.complaints_180d_before_recall) },
-  ], byMake(state.data.recalls), { limit: 20 });
+  ], byMake(state.data.recalls), {
+    limit: 20,
+    rowKey: (r) => r.campaign_number, selectedKey: state.recall,
+    onSelect: (r) => { state.recall = r.campaign_number; renderRecalls(); showRecall(r.campaign_number); },
+  });
+}
+
+// Recall text comes live from NHTSA's public API, so the dashboard stays small
+// and always shows NHTSA's current wording.
+const recallCache = new Map();
+function showRecall(id) {
+  const panel = document.getElementById("recall-panel");
+  panel.hidden = false;
+  panel.innerHTML = `<h3>${esc(id)}</h3><p class="sub">Loading from NHTSA…</p>`;
+  if (!recallCache.has(id)) {
+    recallCache.set(id, fetch(`https://api.nhtsa.gov/recalls/campaignNumber?campaignNumber=${encodeURIComponent(id)}`)
+      .then((r) => { if (!r.ok) throw new Error(r.statusText); return r.json(); }));
+  }
+  recallCache.get(id).then((json) => {
+    if (state.recall !== id) return;
+    const rs = json.results || [];
+    if (!rs.length) throw new Error("no record");
+    const r = rs[0];
+    const models = [...new Set(rs.map((x) => `${makeCase((x.Make || "").toUpperCase())} ${modelCase((x.Model || "").toUpperCase())}`))];
+    const years = d3.extent(rs, (x) => +x.ModelYear || null);
+    // the API writes dates as DD/MM/YYYY
+    const received = d3.utcParse("%d/%m/%Y")(r.ReportReceivedDate);
+    const flags = [r.parkIt && "Park it: don't drive", r.parkOutSide && "Park outside", r.overTheAirUpdate && "Fixed over the air"].filter(Boolean);
+    panel.innerHTML = `<h3>${esc(id)} · ${esc(r.Component)}</h3>
+      <div class="sub">${esc(r.Manufacturer)} · report received ${received ? dayLabel(received) : esc(r.ReportReceivedDate)} · ${fmt(+r.PotentialNumberofUnitsAffected || 0)} vehicles ·
+        ${outLink(recallUrl(id), "Open on NHTSA")}</div>
+      ${flags.map((f) => `<span class="flag">${esc(f)}</span>`).join("")}
+      <dl>
+        <dt>Vehicles</dt><dd>${esc(models.slice(0, 6).join(", "))}${models.length > 6 ? ` and ${models.length - 6} more` : ""}${years[0] ? ` (${years[0] === years[1] ? years[0] : `${years[0]}–${years[1]}`})` : ""}</dd>
+        <dt>Defect</dt><dd>${esc(r.Summary)}</dd>
+        <dt>Consequence</dt><dd>${esc(r.Consequence)}</dd>
+        <dt>Remedy</dt><dd>${esc(r.Remedy)}</dd>
+      </dl>`;
+  }).catch(() => {
+    if (state.recall !== id) return;
+    recallCache.delete(id);
+    panel.innerHTML = `<h3>${esc(id)}</h3><p class="sub">Couldn't load the details from NHTSA's API. ${outLink(recallUrl(id), "Open the recall on NHTSA")}</p>`;
+  });
+}
+
+/* ---------- what owners describe (loaded on first use) ---------- */
+let signalText = null;
+const loadSignalText = () => (signalText ??= fetch("data/signal_text.json").then((r) => (r.ok ? r.json() : {})).catch(() => ({})));
+
+function renderFacts() {
+  const el = document.getElementById("detail-facts");
+  const s = state.selected;
+  if (!s) { el.innerHTML = ""; return; }
+  const outcomes = [
+    s.next_recall_campaign
+      ? `Recall ${outLink(recallUrl(s.next_recall_campaign), s.next_recall_campaign)}, ${s.days_to_recall} days after the month ended`
+      : s.followup_complete ? "No recall on this model and component within a year" : "No recall yet; the year isn't over",
+    s.next_investigation_number
+      ? `NHTSA investigation ${outLink(investigationUrl(s.next_investigation_number), s.next_investigation_number)}, ${s.days_to_investigation <= 0 ? "opened the same month" : `opened ${s.days_to_investigation} days later`}`
+      : s.followup_complete ? "No NHTSA investigation of this model and component within a year" : "No NHTSA investigation yet",
+  ];
+  el.innerHTML = `<div class="outcomes">${outcomes.map((o) => `<span>${o}</span>`).join("")}</div><h3>What owners describe</h3><p>Loading…</p>`;
+  const key = keyOf(s);
+  loadSignalText().then((all) => {
+    if (!state.selected || keyOf(state.selected) !== key) return;
+    const t = all[key];
+    const body = !t ? "<p>No narratives exported for this signal.</p>" : `
+      <div class="chips">${t.phrases.map(([p, n]) => `<span class="chip">${esc(p)}<b>${fmt(n)}</b></span>`).join("") || "<span>No phrase repeats.</span>"}</div>
+      ${t.years.length ? `<p>Most complaints are about model years ${t.years.map(([y, n]) => `${esc(y)} (${fmt(n)})`).join(", ")}.</p>` : ""}
+      ${t.examples.map((x) => `<p class="quote">${esc(x)}</p>`).join("")}`;
+    el.innerHTML = `<div class="outcomes">${outcomes.map((o) => `<span>${o}</span>`).join("")}</div>
+      <h3>What owners describe <span class="sub">(phrases counted once per complaint)</span></h3>${body}`;
+  });
+}
+
+/* ---------- CSV and shareable links ---------- */
+function downloadSignals() {
+  const cols = ["month", "make", "model", "component_group", "complaints", "baseline_mean", "ratio_to_baseline", "z_score",
+    "next_recall_campaign", "next_recall_date", "days_to_recall", "next_investigation_number", "next_investigation_date", "followup_complete"];
+  const cell = (v) => (v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+  const csv = [cols.join(","), ...byMake(state.data.signals).map((r) => cols.map((c) => cell(r[c])).join(","))].join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = `signals-${state.make === "ALL" ? "all-makes" : state.make.toLowerCase().replace(/\W+/g, "-")}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// The view lives in the URL hash, so a link reopens the same make and signal.
+function saveView() {
+  const p = new URLSearchParams();
+  if (state.make !== "ALL") p.set("make", state.make);
+  if (state.selected) p.set("signal", keyOf(state.selected));
+  if (state.outcome !== "recall") p.set("outcome", state.outcome);
+  history.replaceState(null, "", `${location.pathname}${location.search}${p.toString() ? `#${p}` : ""}`);
+}
+
+function loadView() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  const make = p.get("make");
+  if (make && state.data.monthly.some((r) => r.make === make)) state.make = make;
+  if (OUTCOMES[p.get("outcome")]) state.outcome = p.get("outcome");
+  const sig = p.get("signal");
+  state.selected = (sig && state.data.signals.find((s) => keyOf(s) === sig)) || null;
 }
 
 /* ---------- wiring ---------- */
@@ -438,7 +579,20 @@ function init(data) {
   document.getElementById("signals-more").addEventListener("click", () => {
     state.allSignals = !state.allSignals; renderSignals();
   });
-  select.addEventListener("change", () => { state.make = select.value; state.selected = null; state.allSignals = false; renderAll(); });
+  select.addEventListener("change", () => { state.make = select.value; state.selected = null; state.allSignals = false; renderAll(); saveView(); });
+  document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+    state.outcome = b.dataset.outcome; renderBacktest(); saveView();
+  }));
+  document.getElementById("signals-csv").addEventListener("click", downloadSignals);
+  document.getElementById("copy-link").addEventListener("click", (e) => {
+    saveView();
+    navigator.clipboard?.writeText(location.href).then(() => {
+      e.target.textContent = "Link copied";
+      setTimeout(() => { e.target.textContent = "Copy link to this view"; }, 1500);
+    });
+  });
+  loadView();
+  select.value = state.make;
 
   document.getElementById("theme-toggle").addEventListener("click", () => {
     const root = document.documentElement;

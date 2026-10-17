@@ -35,6 +35,9 @@ COMPONENTS = {
     "STRUCTURE": ["BODY"],
     "LATCHES/LOCKS/LINKAGES": ["DOORS"],
 }
+# words for synthetic complaint narratives
+SYMPTOMS = ["FAILED WITHOUT WARNING", "STOPPED WORKING", "WARNING LIGHT CAME ON", "MADE A GRINDING NOISE"]
+CONTEXTS = ["WHILE DRIVING ON THE HIGHWAY", "AT LOW SPEED", "AFTER STARTING THE VEHICLE", "IN TRAFFIC"]
 # Injected defects: (make, model, component group, first month, peak multiplier)
 SPIKES = [
     ("HYUNDAI", "TUCSON", "ELECTRICAL SYSTEM", date(2025, 3, 1), 6),
@@ -103,7 +106,8 @@ def main():
                                 "DATEA": fmt(received + timedelta(days=2)),
                                 "LDATE": fmt(received) if random.random() > 0.01 else "",
                                 "MILES": str(random.randint(100, 90_000)),
-                                "CDESCR": "SYNTHETIC SAMPLE RECORD",
+                                "CDESCR": f"SYNTHETIC SAMPLE RECORD. THE {comp.split(':')[-1]} "
+                                          f"{random.choice(SYMPTOMS)} {random.choice(CONTEXTS)}.",
                                 "PROD_TYPE": "V",
                             }))
     # recalls follow each spike after a lag; plus background recalls
@@ -129,6 +133,18 @@ def main():
         mk = random.choice(list(VEHICLES))
         recall(mk, random.choice(VEHICLES[mk]), random.choice(list(COMPONENTS)),
                START + timedelta(days=random.randint(0, (END - START).days)), random.randint(500, 90_000))
+    # NHTSA opens an investigation into some of the injected defects
+    ic = SCHEMA["investigations"]["columns"]
+    investigations = []
+    for n, (mk, md, grp, first, _) in enumerate(SPIKES[:3], start=1):
+        opened = first + timedelta(days=45)
+        for year in (2022, 2023, 2024):
+            investigations.append(row(ic, {
+                "ACTION_NUMBER": f"PE{opened:%y}{n:03d}", "MAKE": mk, "MODEL": md, "YEAR": str(year),
+                "COMPNAME": f"{grp}:{random.choice(COMPONENTS[grp])}", "MFR_NAME": f"{mk.title()} Motor Co.",
+                "ODATE": fmt(opened), "SUBJECT": "SYNTHETIC SAMPLE INVESTIGATION",
+            }))
+    (RAW_DIR / SCHEMA["investigations"]["files"][0]["file"]).write_text("\n".join(investigations) + "\n", encoding="latin-1")
     # split complaints across the real period files by received year, like NHTSA does
     files = SCHEMA["complaints"]["files"]
     ldate = cc.index("LDATE")

@@ -23,6 +23,7 @@ complaints:
     VEHICLES_TOWED_YN, STATE_OF_INCIDENT, VEHICLE_OPERATOR]
   drop_columns: [VEHICLE_OPERATOR]   # a person's name; never loaded
   date_column: LDATE      # date NHTSA received the complaint (YYYYMMDD)
+  fallback_date_column: DATEA
 recalls:
   files:
     - url: https://static.nhtsa.gov/odi/ffdd/rcl/FLAT_RCL_POST_2010.zip
@@ -33,3 +34,13 @@ recalls:
     CORRECTIVE_ACTION, NOTES, RCL_CMPT_ID, MFR_COMP_NAME, MFR_COMP_DESC,
     MFR_COMP_PTNO, DO_NOT_DRIVE, PARK_OUTSIDE]
   date_column: RCDATE     # date the manufacturer's defect report was received
+  fallback_date_column: DATEA
+investigations:
+  # NHTSA defect investigations and petitions (PE, EA, RQ, AQ, DP), one row per
+  # action x make/model/year x component. INV.txt describes the fields.
+  files:
+    - url: https://static.nhtsa.gov/odi/ffdd/inv/FLAT_INV.zip
+      file: FLAT_INV.txt
+  columns: [ACTION_NUMBER, MAKE, MODEL, YEAR, COMPNAME, MFR_NAME, ODATE, CDATE,
+    CAMPNO, SUBJECT, SUMMARY]
+  date_column: ODATE      # date the investigation was opened

@@ -63,18 +63,24 @@
             <span class="key"><i class="dot signal"></i> signal</span></p>
         </header>
         <div class="chart" id="detail-chart" role="img" aria-label="Line chart of complaints against baseline for the selected signal"></div>
+        <div class="facts" id="detail-facts"></div>
       </article>
 
       <article class="card wide">
         <header class="card-head">
           <h2>Does the signal rule work?</h2>
-          <p class="sub">Backtest, all makes, on months with a full year of follow-up: the share of flagged months followed by a recall on the same make, model and component within 365 days, by z-score threshold.
+          <div class="seg" role="group" aria-label="Outcome to score against">
+            <button type="button" data-outcome="recall" aria-pressed="true">Recall</button>
+            <button type="button" data-outcome="recall_or_investigation" aria-pressed="false">Recall or NHTSA investigation</button>
+          </div>
+          <p class="sub">Backtest, all makes, on months with a full year of follow-up: the share of flagged months followed by <span id="outcome-text">a recall on the same make, model and component</span> within 365 days, by z-score threshold.
             <span class="key"><i class="line s1"></i> ≥ 1.5× baseline</span>
             <span class="key"><i class="line s2"></i> ≥ 2×</span>
             <span class="key"><i class="line s3"></i> ≥ 3×</span>
             <span class="key"><i class="line baseline"></i> every eligible month (base rate)</span></p>
         </header>
         <p class="callout" id="backtest-callout"></p>
+        <p class="callout" id="backtest-oos"></p>
         <div class="chart" id="backtest-chart" role="img" aria-label="Line chart of recall hit rate by z-score threshold for three ratio thresholds, against the base rate"></div>
         <details class="table-view"><summary>View as table</summary><div class="table-wrap" id="backtest-table"></div></details>
       </article>
@@ -85,15 +91,20 @@
           <p class="sub">Months where complaints reached at least 2× their 12-month baseline, with at least 10 complaints and a Poisson z-score of 3 or more. Counted per make, model and component. Spikes within 90 days after a recall on the same model and component are left out, since owners are reacting to the recall. Select a row to see its history.</p>
         </header>
         <div class="table-wrap"><table class="data" id="signals-table"></table></div>
-        <button class="more" id="signals-more" type="button" hidden></button>
+        <div class="actions">
+          <button class="more" id="signals-more" type="button" hidden></button>
+          <button class="more" id="signals-csv" type="button">Download CSV</button>
+          <button class="more" id="copy-link" type="button">Copy link to this view</button>
+        </div>
       </article>
 
       <article class="card wide">
         <header class="card-head">
           <h2>Recalls and the complaints before them</h2>
-          <p class="sub">Complaints for the same make, model and component in the 180 days before each recall report</p>
+          <p class="sub">Complaints for the same make, model and component in the 180 days before each recall report. Select a row for the defect, its consequence and the remedy, straight from NHTSA.</p>
         </header>
         <div class="table-wrap"><table class="data" id="recalls-table"></table></div>
+        <div class="recall-panel" id="recall-panel" hidden></div>
       </article>
     </section>
 

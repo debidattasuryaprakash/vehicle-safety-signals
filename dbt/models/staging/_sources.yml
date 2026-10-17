@@ -18,3 +18,8 @@ sources:
         description: One row per recall campaign x make/model/year (FLAT_RCL_POST_2010.txt)
         config:
           loaded_at_field: "{{ 'try_to_timestamp(nullif(rcdate, \\'\\'), \\'YYYYMMDD\\')' if target.type == 'snowflake' else 'try_strptime(nullif(rcdate, \\'\\'), \\'%Y%m%d\\')' }}"
+      - name: investigations
+        description: One row per NHTSA action x make/model/year x component (FLAT_INV.txt)
+        config:
+          # investigations open a few times a month at most, so no freshness check
+          freshness: null

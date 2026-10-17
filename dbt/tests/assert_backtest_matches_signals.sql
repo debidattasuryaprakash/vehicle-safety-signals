@@ -9,7 +9,8 @@ with expected as (
 ),
 
 actual as (
-    select signals, hits from {{ ref('mart_signal_backtest') }} where is_current
+    select signals, hits from {{ ref('mart_signal_backtest') }}
+    where is_current and outcome = 'recall' and slice = 'all'
 )
 
 select *

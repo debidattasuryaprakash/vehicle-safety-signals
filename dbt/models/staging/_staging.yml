@@ -26,3 +26,16 @@ models:
         data_tests: [not_null]
       - name: report_received_date
         data_tests: [not_null]
+  - name: stg_investigations
+    description: NHTSA defect investigations and petitions, typed and standardised.
+    columns:
+      - name: investigation_row_key
+        data_tests: [unique, not_null]
+      - name: action_number
+        description: NHTSA action number, e.g. PE22002. Links to https://www.nhtsa.gov/?nhtsaId=<action_number>.
+        data_tests: [not_null]
+      - name: action_type
+        data_tests:
+          - accepted_values: {arguments: {values: [PE, EA, RQ, AQ, DP, EQ]}}
+      - name: opened_date
+        data_tests: [not_null]

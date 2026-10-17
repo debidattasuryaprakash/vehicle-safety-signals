@@ -1,7 +1,7 @@
 """Download and unzip the NHTSA complaints and recalls flat files.
 
 Usage: python ingestion/download.py
-About 200 MB zipped in all; the unzipped text files are about 1.2 GB.
+About 200 MB zipped in all; the unzipped text files are about 1.6 GB.
 """
 import sys
 import urllib.request
@@ -24,5 +24,5 @@ def fetch(name: str) -> None:
 
 if __name__ == "__main__":
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    for dataset in sys.argv[1:] or ["complaints", "recalls"]:
+    for dataset in sys.argv[1:] or list(SCHEMA):
         fetch(dataset)

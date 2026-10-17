@@ -38,7 +38,7 @@ def read_one(name: str, path):
                              quoting=3, encoding="latin-1", chunksize=CHUNK,
                              on_bad_lines="warn", keep_default_na=False):
         dates = chunk[spec["date_column"]].fillna("")
-        fallback = chunk["DATEA"].fillna("")
+        fallback = chunk[spec.get("fallback_date_column", spec["date_column"])].fillna("")
         year = dates.where(dates.str.len() == 8, fallback).str[:4]
         chunk = chunk[pd.to_numeric(year, errors="coerce") >= START_YEAR].copy()
         chunk = chunk.drop(columns=spec.get("drop_columns", []))
@@ -53,7 +53,7 @@ def load_duckdb():
     DUCKDB_PATH.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(DUCKDB_PATH))
     con.execute("create schema if not exists raw")
-    for name in ("complaints", "recalls"):
+    for name in SCHEMA:
         con.execute(f"drop table if exists raw.{name}")
         total = 0
         for i, chunk in enumerate(read_file(name)):
@@ -75,7 +75,7 @@ def load_snowflake():
         warehouse=os.environ["SNOWFLAKE_WAREHOUSE"], database=os.environ["SNOWFLAKE_DATABASE"],
     )
     con.cursor().execute("create schema if not exists RAW")
-    for name in ("complaints", "recalls"):
+    for name in SCHEMA:
         con.cursor().execute(f"drop table if exists RAW.{name.upper()}")
         total = 0
         for chunk in read_file(name):

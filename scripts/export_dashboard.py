@@ -7,7 +7,9 @@ Set DATA_LABEL="NHTSA" once you've loaded the real files (default: SAMPLE).
 """
 import json
 import os
+import re
 import sys
+from collections import Counter
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -17,6 +19,62 @@ sys.path.insert(0, str(ROOT / "ingestion"))
 from config import DUCKDB_PATH, TARGET  # noqa: E402
 
 OUT = ROOT / "dashboard" / "data" / "dashboard.json"
+TEXT_OUT = ROOT / "dashboard" / "data" / "signal_text.json"
+
+# words that carry no meaning about a defect, left out of the phrase counts
+STOP = set("""
+a about after again all also am an and any are as at back be been before being but by can car
+contact could did do does doing down during each for from had has have he her his how i if in
+into is it its it's just me more my no not now of off on once only or other our out over own
+same she so some such than that the their them then there these they this those through to too
+under until up very vehicle was we were what when where which while who why will with would you
+your year model make approximately mileage stated failure manufacturer notified dealer
+""".split())
+
+
+def phrases(texts, top=8):
+    """The most common two-word phrases, counted once per complaint."""
+    counts = Counter()
+    for text in texts:
+        words = [w for w in re.findall(r"[A-Z][A-Z'-]+", (text or "").upper()) if w.lower() not in STOP]
+        counts.update({f"{a} {b}" for a, b in zip(words, words[1:])})
+    return [[p.lower(), n] for p, n in counts.most_common(top) if n > 1]
+
+
+def excerpt(text, limit=240):
+    text = re.sub(r"\s+", " ", (text or "")).strip()
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "…"
+
+
+def signal_text(q):
+    """Per signal: top narrative phrases, model-year mix and two example complaints."""
+    rows = q("""
+        select s.make, s.model, s.component_group, s.month, f.odi_number,
+               max(r.cdescr) as narrative, max(r.yeartxt) as model_year
+        from marts.mart_signals s
+        join marts.fct_complaints f
+          on f.make = s.make and f.model = s.model
+         and f.component_group = s.component_group and f.received_month = s.month
+        join raw.complaints r on r.odino = f.odi_number
+        group by 1, 2, 3, 4, 5""")
+    by_signal = {}
+    for r in rows:
+        key = f"{r['make']}|{r['model']}|{r['component_group']}|{clean(r['month'])}"
+        by_signal.setdefault(key, []).append(r)
+    out = {}
+    for key, items in by_signal.items():
+        texts = [i["narrative"] for i in items]
+        top = phrases(texts)
+        lead = top[0][0].upper() if top else ""
+        # examples: complaints that use the top phrase, mid-length first
+        pool = sorted((t for t in texts if t and lead in t.upper()), key=lambda t: abs(len(t) - 300)) or texts
+        years = Counter(i["model_year"] for i in items if i["model_year"] and i["model_year"] != "9999")
+        out[key] = {
+            "phrases": top,
+            "years": [[y, n] for y, n in years.most_common(3)],
+            "examples": [excerpt(t) for t in pool[:2]],
+        }
+    return out
 
 
 def connect():
@@ -71,12 +129,14 @@ def main():
         group by 1, 2""")
     signals = rows(q, """
         select make, model, component_group, month, complaints, baseline_mean,
-               ratio_to_baseline, z_score, next_recall_date, days_to_recall, followup_complete
+               ratio_to_baseline, z_score, next_recall_date, days_to_recall, next_recall_campaign,
+               next_investigation_date, next_investigation_number, days_to_investigation,
+               followup_complete
         from marts.mart_signals order by month desc, z_score desc""")
     backtest = rows(q, """
-        select min_z, ratio, signals, hits, hit_rate, eligible_months, base_rate, lift,
-               median_days_to_recall, is_current
-        from marts.mart_signal_backtest order by ratio, min_z""")
+        select min_z, ratio, slice, outcome, signals, hits, hit_rate, eligible_months, base_rate,
+               lift, median_days_to_outcome, is_current
+        from marts.mart_signal_backtest order by outcome, slice, ratio, min_z""")
     # monthly history of every pair that has a signal, as compact arrays
     # (one object per pair) to keep the file small
     series = []
@@ -128,6 +188,9 @@ def main():
     OUT.write_text(json.dumps(data, separators=(",", ":")))
     print(f"Wrote {OUT} ({OUT.stat().st_size / 1024:.0f} KB): "
           f"{len(signals)} signals, {len(recalls)} recalls")
+    # narratives are only needed when someone opens a signal, so they ship separately
+    TEXT_OUT.write_text(json.dumps(signal_text(q), separators=(",", ":"), ensure_ascii=False))
+    print(f"Wrote {TEXT_OUT} ({TEXT_OUT.stat().st_size / 1024:.0f} KB)")
 
 
 if __name__ == "__main__":

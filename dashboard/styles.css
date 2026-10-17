@@ -152,3 +152,34 @@ code { font-size: 12px; background: var(--grid); padding: 1px 4px; border-radius
   .grid { grid-template-columns: 1fr; }
   h1 { font-size: 24px; }
 }
+
+/* links out to NHTSA */
+a.out { color: var(--series-1); text-decoration: none; font-weight: 600; }
+a.out:hover { text-decoration: underline; }
+a.out::after { content: " ↗"; font-weight: 400; }
+
+/* segmented control */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin: 8px 0 4px; }
+.seg button { font: inherit; font-size: 13px; padding: 6px 12px; border: 0; background: var(--surface); color: var(--text-secondary); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--row-selected); color: var(--text-primary); font-weight: 600; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* what owners describe */
+.facts { margin-top: 8px; font-size: 13px; color: var(--text-secondary); }
+.facts h3 { font-size: 13px; margin: 12px 0 6px; color: var(--text-primary); }
+.facts .outcomes { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; background: var(--page); color: var(--text-primary); }
+.chip b { color: var(--text-muted); font-weight: 400; margin-left: 4px; }
+.quote { margin: 6px 0 0; padding: 6px 10px; border-left: 3px solid var(--grid); color: var(--text-secondary); }
+
+/* recall detail */
+.recall-panel { margin-top: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--page); font-size: 14px; }
+.recall-panel h3 { margin: 0 0 4px; font-size: 15px; }
+.recall-panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 10px 0 0; }
+.recall-panel dt { color: var(--text-muted); }
+.recall-panel dd { margin: 0; }
+.flag { display: inline-block; margin: 6px 6px 0 0; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--critical); color: var(--critical); font-size: 12px; font-weight: 600; }
+@media (max-width: 760px) { .recall-panel dl { grid-template-columns: 1fr; } .recall-panel dt { margin-top: 6px; } }

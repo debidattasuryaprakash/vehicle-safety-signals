@@ -2,8 +2,8 @@
 
 An end-to-end analytics pipeline that turns NHTSA's public vehicle complaints into
 **early-warning signals**: vehicle models whose complaints about one component jump well above
-their own history. It then checks whether a recall followed, and **backtests whether the
-signals beat chance**.
+their own history. It then checks whether a recall or an NHTSA investigation followed, and
+**backtests whether the signals beat chance, out of sample**.
 
 This is the same problem a post-market quality team solves: spot an emerging defect from
 field data before it becomes a recall.
@@ -18,26 +18,28 @@ field data before it becomes a recall.
 
 ```mermaid
 flowchart LR
-    A[NHTSA flat files<br/>complaints + recalls] -->|Python: download.py, load.py| B[(Snowflake RAW<br/>DuckDB locally)]
-    B -->|dbt staging| C[stg_complaints<br/>stg_recalls]
+    A[NHTSA flat files<br/>complaints, recalls,<br/>investigations] -->|Python: download.py, load.py| B[(Snowflake RAW<br/>DuckDB locally)]
+    B -->|dbt staging| C[stg_complaints<br/>stg_recalls<br/>stg_investigations]
     C -->|dbt marts| D[dim_vehicle, dim_component<br/>fct_complaints, fct_recalls]
+    C -->|stg_investigations| E
     D --> I[int_model_component_month_counts]
     I --> E[mart_model_component_monthly<br/>mart_signals<br/>mart_signal_backtest]
     D --> R[mart_complaint_to_recall]
     E -->|export_dashboard.py| F[dashboard.json]
     R --> F
     F --> G[HTML / CSS / JS + D3 dashboard<br/>GitHub Pages]
-    H[GitHub Actions] -.->|dbt build: 5 unit tests + 32 data tests| D
+    G -.->|recall details on demand| N[NHTSA recalls API]
+    H[GitHub Actions] -.->|dbt build: 6 unit tests + 37 data tests| D
 ```
 
 | Layer | Tools | What it does |
 |---|---|---|
-| Ingestion | Python, pandas | Downloads NHTSA's period files (~200 MB zipped), checks the column count, drops personal fields, filters to `START_YEAR`, loads text columns into `raw` (re-runnable full refresh) |
+| Ingestion | Python, pandas | Downloads NHTSA's complaint, recall and investigation files (~200 MB zipped), checks the column count, drops personal fields, filters to `START_YEAR`, loads text columns into `raw` (re-runnable full refresh) |
 | Warehouse | DuckDB (local and CI); Snowflake profile ready | Same dbt models; one macro handles each engine's date syntax. The Snowflake target hasn't been run yet |
 | Transformation | dbt Core | Staging (typing, trimming, de-duplication), a star schema with an incremental complaints fact, an intermediate monthly grid, and analytical marts |
-| Data quality | dbt tests, `profile_data.py` | 5 unit tests pin the signal rules on hand-made inputs; 32 data tests cover keys, relationships, plausible values and backtest consistency; source freshness runs in the monthly refresh |
+| Data quality | dbt tests, `profile_data.py` | 6 unit tests pin the signal rules on hand-made inputs; 37 data tests cover keys, relationships, accepted values, plausible values and backtest consistency; source freshness runs in the monthly refresh |
 | CI/CD | GitHub Actions | Builds and tests the whole pipeline on synthetic data on every push; publishes the dashboard and the dbt docs to GitHub Pages from `main` |
-| Dashboard | HTML, CSS, JavaScript, D3 | Make filter, trend, top components, signal drill-down against baseline, **backtest of the method**, signal and recall tables; light and dark mode; works on phones |
+| Dashboard | HTML, CSS, JavaScript, D3 | Make filter, trend, top components, signal drill-down with **what owners describe** (top narrative phrases and examples), **backtest with an out-of-sample check**, signal and recall tables linking to NHTSA, recall details loaded live from NHTSA's API, CSV export, shareable links; light and dark mode; works on phones |
 
 ## How a signal is defined
 
@@ -56,33 +58,40 @@ A signal counts as **followed by a recall** only if a recall on the same make, m
 component is filed *after the signal month ends* and within 365 days. Lead time is measured from
 the first day of the next month, when the month's data is complete.
 
+The second outcome is **a recall or an NHTSA investigation** (preliminary evaluation, engineering
+analysis, recall query or audit query) on the same make, model and component. An investigation
+opened during the signal month counts, since NHTSA often acts on those same complaints.
+
 Every threshold is a variable in `dbt/dbt_project.yml`. `mart_signal_backtest` scores a grid of
-them against the **base rate**: how often a recall follows any eligible month (enough history and
-volume, no recent recall).
+them, for each outcome, against the **base rate**: how often the outcome follows any eligible
+month (enough history and volume, no recent recall). It also splits signal months into 2020–2022
+and 2023–2025, so thresholds picked on the early years can be tested on the later ones.
 
 ## Findings
 
 From 600,028 NHTSA vehicle complaint records received January 2020 to September 2026, with the
 default thresholds: 1,406 signals, 1,158 of them with a full year of follow-up.
 
-1. **Complaint spikes alone barely predict recalls.** 18.5% of signals were followed by a recall
-   on the same model and component within a year, against 17.5% of all eligible months: a lift
-   of **1.05×**. Stricter thresholds help a little (z ≥ 5 reaches 1.18×), but those were picked on
-   the same data, so treat them as a hint rather than a result. Matching at make level first, the
-   rule did no better than chance (0.98×). Models like Ford Power Train get about 11 recalls a
-   year, so "a recall followed" was nearly certain either way. Moving to model level made the
-   outcome specific enough to measure.
-2. **Where recalls are common, a spike does raise the odds.** Among the fifth of models and
-   components most often recalled, 81% of signal months were followed by a recall, against 63%
-   of their other months. For the rest, recalls are rare and spikes don't change that. Part of
-   the reason: 92.5% of vehicle recalls since 2020 were initiated by the manufacturer, working
-   from its own warranty and field data; only 6.7% were influenced by NHTSA's defects office,
-   which is where public complaints feed in (`INFLUENCED_BY` in the recalls file).
-3. **The strongest signals without a recall are worth reading.** Tesla Model 3 and Model Y
+1. **Complaint spikes barely predict recalls.** 18.5% of signals were followed by a recall on
+   the same model and component within a year, against 17.5% of all eligible months: a lift of
+   **1.05×**. Matching at make level first, the rule did no better than chance (0.98×), because
+   pairs like Ford Power Train get about 11 recalls a year. And picking thresholds on the data
+   flatters them: the best setting on 2020–22 (1.20×) fell to 1.05× on 2023–25.
+2. **They do predict NHTSA investigations.** 28.7% of signals were followed by a recall or an
+   NHTSA investigation on the same model and component, against 24.4% of eligible months:
+   **1.18×**, steady across periods (1.15× in 2020–22, 1.14× in 2023–25). For investigations
+   alone, 13.8% against 9.5% (1.45×). The thresholds that scored best on 2020–22 for this outcome
+   (z ≥ 5, ≥ 3×) held up out of sample: **1.39×** on 2023–25.
+3. **Why the two differ.** 92.5% of vehicle recalls since 2020 were initiated by the
+   manufacturer, working from its own warranty and field data; only 6.7% were influenced by
+   NHTSA's defects office, which is where public complaints feed in (`INFLUENCED_BY` in the
+   recalls file). Complaints move NHTSA, and NHTSA's investigations are what they predict.
+4. **The strongest signals without a recall are worth reading.** Tesla Model 3 and Model Y
    brakes in February 2022 (113 and 84 complaints against baselines of 2.4 and 1.5) are owners
-   describing "phantom braking" on adaptive cruise control. Chrysler Pacifica steering in
-   September 2025 (81 against 3.0) is mostly 2017–2018 vehicles and stayed elevated afterwards.
-   Neither had a matching recall within a year. See [docs/case-studies.md](docs/case-studies.md).
+   describing "phantom braking" on adaptive cruise control; NHTSA opened PE22-002 that month,
+   filed under a different component. Chrysler Pacifica steering in September 2025 (81 against
+   3.0) is mostly 2017–2018 vehicles and stayed elevated afterwards. See
+   [docs/case-studies.md](docs/case-studies.md).
 
 So the dashboard is a triage list for investigators, not a recall forecast: it points at models
 where owners suddenly describe the same problem, and the narratives decide what's real.
@@ -109,9 +118,9 @@ make real      # download (~200 MB) -> profile -> load -> dbt build -> export
 make serve
 ```
 
-This uses NHTSA's `COMPLAINTS_RECEIVED_2020-2024.zip`, `COMPLAINTS_RECEIVED_2025-2026.zip` and
-`FLAT_RCL_POST_2010.zip`, not the multi-GB `FLAT_CMPL.zip`. Unzipped, they take about 1.2 GB in
-`data/`. If the project sits in an iCloud-synced folder (such as Desktop on a Mac), make `data/` a
+This uses NHTSA's `COMPLAINTS_RECEIVED_2020-2024.zip`, `COMPLAINTS_RECEIVED_2025-2026.zip`,
+`FLAT_RCL_POST_2010.zip` and `FLAT_INV.zip`, not the multi-GB `FLAT_CMPL.zip`. Unzipped, they take
+about 1.6 GB in `data/`. If the project sits in an iCloud-synced folder (such as Desktop on a Mac), make `data/` a
 symlink to a folder outside it, or iCloud will try to upload the files and stall reads while it
 does. `RAW_DIR` and `DUCKDB_PATH` override the locations.
 
@@ -145,11 +154,14 @@ overwrite it.
 - Complaint counts aren't normalised by the number of vehicles on the road, so a popular model
   draws more complaints simply by volume. The baseline compares each model and component with
   its own history, which partly offsets this.
-- The outcome is a recall on the same make, model and component group. A recall filed under a
-  different component group, or under a differently spelled model name, isn't matched; 78% of
-  recall campaigns by make and model match a model that has complaints.
-- A signal can lead to an investigation or a service bulletin instead of a recall. Those aren't
-  loaded, so the hit rate undercounts useful signals.
+- Outcomes are matched on make, model and component group. A recall or investigation filed under
+  a different component group (as Tesla's PE22-002 was), or under a differently spelled model
+  name, isn't matched; 78% of recall campaigns by make and model match a model that has
+  complaints. Matching investigations on model alone made the base rate 56%, which is useless.
+- Service bulletins and manufacturer communications aren't loaded, so even the combined outcome
+  undercounts signals that led to action.
+- The phrase counts in "what owners describe" are simple word pairs. Some narratives are
+  hotline transcriptions or AI-drafted text, which repeat stock wording.
 - Recent signals haven't had a full year to be followed by a recall. The recall rate and the
   backtest count only signals with a full 365 days after them.
 - Only vehicles are counted (tires, child seats and equipment are dropped), the month still in

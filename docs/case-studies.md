@@ -26,10 +26,12 @@ closed on 29 June 2026 without a recall campaign.
 **What this shows about the method.**
 
 - The signal was real: it matched an investigation NHTSA opened at the same time. A recall-only
-  outcome scores it as a miss. Investigations are an outcome worth adding to the backtest.
-- The investigation's component is *Forward Collision Avoidance: Adaptive Cruise Control*, while
-  owners filed the complaints under *Service Brakes*. Even an outcome matched on component group
-  would have missed it.
+  outcome scores it as a miss, which is why the pipeline now loads investigations as a second
+  outcome.
+- Even so, the backtest still scores it as a miss. The investigation's component is *Forward
+  Collision Avoidance: Adaptive Cruise Control*, while owners filed the complaints under *Service
+  Brakes*, and outcomes are matched on component. Matching on model alone would catch it, but
+  then 56% of all months count as hits and the comparison means nothing.
 - Lead time was zero. Owners and NHTSA saw the problem at the same time, so this is detection,
   not early warning.
 
@@ -74,6 +76,6 @@ where followup_complete and next_recall_date is null
 order by z_score desc;
 ```
 
-Narrative phrases come from counting word pairs in `raw.complaints.cdescr` for each
-model, component and month. Investigations come from NHTSA's `FLAT_INV.zip`
-(https://static.nhtsa.gov/odi/ffdd/inv/FLAT_INV.zip), which isn't part of the pipeline yet.
+Narrative phrases come from counting word pairs in `raw.complaints.cdescr` for each model,
+component and month; the dashboard shows them for every signal. Investigations come from NHTSA's
+`FLAT_INV.zip`, loaded as `stg_investigations`.
