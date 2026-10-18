@@ -8,11 +8,25 @@ their own history. It then checks whether a recall or an NHTSA investigation fol
 This is the same problem a post-market quality team solves: spot an emerging defect from
 field data before it becomes a recall.
 
-**Live dashboard:** *add the GitHub Pages link here after the first deploy* ·
-**Model lineage:** the same link + `/lineage/`
+[![CI](https://github.com/debidattasuryaprakash/vehicle-safety-signals/actions/workflows/ci.yml/badge.svg)](https://github.com/debidattasuryaprakash/vehicle-safety-signals/actions/workflows/ci.yml)
+
+**[Live dashboard](https://debidattasuryaprakash.github.io/vehicle-safety-signals/)** ·
+**[Model lineage and docs (dbt)](https://debidattasuryaprakash.github.io/vehicle-safety-signals/lineage/)** ·
+**[Case studies](docs/case-studies.md)**
 
 ![Dashboard on NHTSA data, January 2020 to September 2026](docs/dashboard.png)
 *NHTSA complaints received January 2020 to September 2026 (vehicles only), and the recalls filed in the same window.*
+
+## At a glance
+
+- **Data:** 600,028 NHTSA complaint records, 6,081 recalls and NHTSA's defect investigations, 2020–2026.
+- **Method:** a Poisson z-score for every make × model × component × month against its trailing
+  12-month baseline, with recall-reaction spikes excluded.
+- **Result:** spikes barely predict recalls (1.05× the base rate; 92.5% of recalls are
+  manufacturer-initiated), but predict a recall or NHTSA investigation at 1.18×. Thresholds picked
+  on 2020–22 held **1.39×** on a 2023–25 holdout.
+- **Stack:** Python, dbt (DuckDB; Snowflake profile), GitHub Actions, D3. 6 unit tests and 37
+  data tests run on every push.
 
 ## Architecture
 

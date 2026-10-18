@@ -5,6 +5,9 @@ and point to the file where the answer lives.
 
 ## Resume bullet (draft; put it in your own words)
 
+Project link: https://debidattasuryaprakash.github.io/vehicle-safety-signals/
+(code: https://github.com/debidattasuryaprakash/vehicle-safety-signals)
+
 > Built an end-to-end NHTSA vehicle-safety pipeline (Python ingestion, dbt on DuckDB with a
 > Snowflake profile, unit-tested signal logic, GitHub Actions CI, D3 dashboard) over 600k
 > complaints, 6k recalls and NHTSA investigations. Backtested the complaint-spike signal with a

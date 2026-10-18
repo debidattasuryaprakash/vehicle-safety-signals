@@ -12,8 +12,8 @@ jobs:
     env:
       START_YEAR: "2024"   # the synthetic sample starts in 2024
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -29,7 +29,7 @@ jobs:
         run: python scripts/export_dashboard.py
       - name: dbt docs (lineage graph) as one static page
         run: cd dbt && dbt docs generate --profiles-dir . --target ci --static
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dbt-docs
           path: dbt/target/static_index.html
@@ -46,16 +46,16 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # publishes the committed dashboard/ folder, including the dashboard.json
       # exported from the real NHTSA data; the docs come from the job above
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dbt-docs
           path: dashboard/lineage
       - run: mv dashboard/lineage/static_index.html dashboard/lineage/index.html
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dashboard
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
