@@ -10,6 +10,9 @@ on:
 
 jobs:
   refresh:
+    # the monthly schedule only runs once Snowflake is set up: add the secrets,
+    # then a repository variable SNOWFLAKE_ENABLED = true
+    if: github.event_name == 'workflow_dispatch' || vars.SNOWFLAKE_ENABLED == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write

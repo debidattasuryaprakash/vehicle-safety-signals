@@ -138,7 +138,8 @@ changing its logic, run `dbt build --full-refresh`.
 1. Start a Snowflake trial, then create a database (for example `VEHICLE_SIGNALS`) and a warehouse.
 2. Copy `.env.example` to `.env`, fill it in, and run `set -a; source .env; set +a`.
 3. Run `cd ingestion && python load.py`, then `cd ../dbt && dbt build --profiles-dir . --target prod`, then `python scripts/export_dashboard.py`.
-4. For a monthly automated refresh, add the same values as repository secrets.
+4. For a monthly automated refresh, add the same values as repository secrets and a repository
+   variable `SNOWFLAKE_ENABLED` = `true` (without it, the schedule stays off).
    `.github/workflows/refresh.yml` then downloads, loads, checks source freshness, rebuilds,
    commits the new `dashboard.json` and starts CI to republish.
 
@@ -185,4 +186,4 @@ reports/        data_quality.md
 .github/        ci.yml (test + Pages + dbt docs), refresh.yml (monthly Snowflake refresh)
 ```
 
-Data: [NHTSA datasets and APIs](https://www.nhtsa.gov/nhtsa-datasets-and-apis), public domain U.S. government data.
+Code: MIT licence (see `LICENSE`). Data: [NHTSA datasets and APIs](https://www.nhtsa.gov/nhtsa-datasets-and-apis), public domain U.S. government data.
